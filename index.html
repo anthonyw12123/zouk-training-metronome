@@ -56,9 +56,27 @@ function playClick(isFirstBeat) {
 }
 
 /* ───── 2️⃣  SpeechSynthesis – “say on beat‑3” ──────── */
-const placeholderText = "Ready to move";   // <-- replace with random pick later
+const phrases = ["alpha", "bravo", "charlie", "disco", ""];   // 5 options, last means “speak nothing”
+let lastPhrase = null;   // keep track of the previous phrase
+
+function pickPhrase() {
+  if (phrases.length === 0) return "";
+
+  let attempt = 0;
+  const maxAttempts = 10;   // safety guard – should never hit this
+  let chosen;
+
+  do {
+    chosen = phrases[Math.floor(Math.random() * phrases.length)];
+    attempt++;
+  } while (chosen === lastPhrase && attempt < maxAttempts);
+
+  lastPhrase = chosen;
+  return chosen;
+}
 
 function speak(text) {
+  if (!text) return;           // nothing to say
   window.speechSynthesis.cancel();          // stop any previous utterance
   const utterance = new SpeechSynthesisUtterance(text);
   window.speechSynthesis.speak(utterance);
@@ -107,7 +125,10 @@ function startMetronome() {
     playClick(beat === 0);            // higher pitch only on beat 1
 
     // speech on the third beat (beat == 2)
-    if (beat === 2) speak(placeholderText);
+    if (beat === 2) {
+      const phrase = pickPhrase();
+      speak(phrase);
+    }
   }, 60000 / bpm);
 }
 
