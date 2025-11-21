@@ -39,6 +39,13 @@
     </select>
   </div>
 
+  <!-- Speak‑mode slider (new) -->
+  <div class="bpm-control">
+    <label for="speakMode">Speak Mode:</label>
+    <input type="range" id="speakMode" min="1" max="3" step="1" value="1">
+    <span id="speakModeLabel">Every 3rd Count</span>
+  </div>
+
   <!-- Beat display & start/stop -->
   <div class="beat" id="beatDisplay">1</div>
   <button id="toggleBtn">Zouk It!</button>
@@ -70,8 +77,8 @@ function playClick(isFirstBeat) {
 /* ───── 2️⃣  Dictionaries for random phrases ──────── */
 const dictionaries = {
   colors: ["", "basic", "ladder all", "veeduh jeena", "veeduh jeena 1 80", "basic in place"], // footwork cues
-  numbers: ["", "clockwise asynchronous", "clockwise synchronous", "counterclockwise synchronous", "counterclockwise asynchronous", "wiggle wiggle wiggle"],     // head motion cues
-  names: ["", "basic in place", "side basic", "linear basic", "pivot", "bonus", "boomerang", "hawool"]   // insanity cues
+  numbers: ["", "clockwise asynchronous", "clockwise synchronous", "counterclockwise synchronous", "counterclockwise asynchronous", "wiggle wiggle wiggle"], // head motion cues
+  names: ["", "basic in place", "side basic", "linear basic", "pivot", "bonus", "boomerang", "hawool"] // insanity cues
 };
 
 let currentDict = "colors";
@@ -106,11 +113,17 @@ let bpm = 60;
 let beat = 0;
 let intervalId = null;
 
+/* Speak‑mode variables */
+let speakMode = 1;                // 1=every 3rd, 2=every other 3rd, 3=random
+let speakOnThirdToggle = true;     // used only in mode 2 to alternate speaking
+
 const bpmSlider = document.getElementById('bpm');
 const bpmInput  = document.getElementById('bpmNum');
 const beatDisp  = document.getElementById('beatDisplay');
 const toggleBtn = document.getElementById('toggleBtn');
 const dictSelect = document.getElementById('dictSelect');
+const speakModeSlider = document.getElementById('speakMode');
+const speakModeLabel = document.getElementById('speakModeLabel');
 
 bpmSlider.addEventListener('input', e => {
   bpm = +e.target.value;
@@ -131,6 +144,22 @@ dictSelect.addEventListener('change', e => {
   lastPhrase = null;               // reset to avoid immediate repeat
 });
 
+/* Speak‑mode slider handler */
+function updateSpeakModeLabel() {
+  const texts = {
+    1: "Every 3rd Count",
+    2: "Every Other 3rd Count",
+    3: "Random (25 %)"
+  };
+  speakModeLabel.textContent = texts[speakMode] || "";
+}
+speakModeSlider.addEventListener('input', e => {
+  speakMode = +e.target.value;
+  updateSpeakModeLabel();
+});
+speakModeSlider.addEventListener('change', updateSpeakModeLabel); // ensure initial label
+updateSpeakModeLabel(); // set initial label
+
 /* ───── 4️⃣  Start / Stop logic ──────── */
 function startMetronome() {
   if (ctx.state === 'suspended') ctx.resume();   // iOS/Android
@@ -149,8 +178,21 @@ function startMetronome() {
     playClick(beat === 0);   // higher pitch on beat 1
 
     if (beat === 2) {        // third beat
-      const phrase = pickPhrase();
-      speak(phrase);
+      let shouldSpeak = false;
+      if (speakMode === 1) {
+        shouldSpeak = true;
+      } else if (speakMode === 2) {
+        // alternate each third beat
+        speakOnThirdToggle = !speakOnThirdToggle;
+        shouldSpeak = speakOnThirdToggle;
+      } else if (speakMode === 3) {
+        shouldSpeak = Math.random() < 0.25;
+      }
+
+      if (shouldSpeak) {
+        const phrase = pickPhrase();
+        speak(phrase);
+      }
     }
   }, 60000 / bpm);
 }
