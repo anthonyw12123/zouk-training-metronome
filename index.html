@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Metronome SPA</title>
+<title>Metronome + Speech SPA</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   body{font-family:Arial,Helvetica,sans-serif;background:#f4f4f4;margin:0;padding:0;display:flex;justify-content:center;align-items:center;height:100vh;}
@@ -20,7 +20,7 @@
 <body>
 
 <div class="container">
-  <h1>Metronome</h1>
+  <h1>Metronome + Speech</h1>
   <div class="bpm-control">
     <label for="bpm">BPM:</label>
     <input type="range" id="bpm" min="40" max="240" value="120">
@@ -54,7 +54,23 @@ function playClick() {
   currentOsc = osc;               // save reference for quick stop
 }
 
-/* ───── 2️⃣  UI & state ────────────────────────────────── */
+/* ───── 2️⃣  SpeechSynthesis – “say on beat‑1” ──────── */
+const placeholderText = "Ready to start";   // <-- replace with random pick later
+
+function speak(text) {
+  // cancel any previous utterance to avoid overlap
+  window.speechSynthesis.cancel();
+
+  const utterance = new SpeechSynthesisUtterance(text);
+  // optional: tweak voice, pitch, rate
+  // utterance.voice = window.speechSynthesis.getVoices()[0];
+  // utterance.pitch = 1;
+  // utterance.rate = 1;
+
+  window.speechSynthesis.speak(utterance);
+}
+
+/* ───── 3️⃣  UI & state ────────────────────────────────── */
 let isRunning = false;
 let bpm = 120;
 let beat = 0;
@@ -77,10 +93,9 @@ bpmInput.addEventListener('input', e => {
   bpmSlider.value = val;
 });
 
-/* ───── 3️⃣  Start / Stop logic ─────────────────────────── */
+/* ───── 4️⃣  Start / Stop logic ───────────────────────── */
 function startMetronome() {
-  // Make sure the AudioContext is resumed (iOS/Android)
-  if (ctx.state === 'suspended') ctx.resume();
+  if (ctx.state === 'suspended') ctx.resume();  // iOS/Android
 
   isRunning = true;
   beat = 0;
@@ -88,14 +103,18 @@ function startMetronome() {
   toggleBtn.textContent = 'Stop';
   toggleBtn.classList.add('stop');
 
-  // Schedule the first tick immediately
+  // first beat – play click and speak
   playClick();
+  speak(placeholderText);
 
-  // Every 60 s / bpm seconds we click
+  // schedule subsequent clicks
   intervalId = setInterval(() => {
-    beat = (beat + 1) % 4;
+    beat = (beat + 1) % 4;           // 0 → 1 → 2 → 3 → 0 ...
     beatDisp.textContent = (beat + 1).toString();
     playClick();
+
+    // when we land on the first beat again (beat === 0) speak
+    if (beat === 0) speak(placeholderText);
   }, 60000 / bpm);
 }
 
@@ -106,20 +125,22 @@ function stopMetronome() {
   toggleBtn.textContent = 'Start';
   toggleBtn.classList.remove('stop');
 
-  // Optionally stop the oscillator that might still be playing
+  // stop any playing click
   if (currentOsc) {
     currentOsc.stop();
     currentOsc = null;
   }
+  // stop any ongoing speech
+  window.speechSynthesis.cancel();
 }
 
-/* ───── 4️⃣  Button handler ─────────────────────────────── */
+/* ───── 5️⃣  Button handler ──────────────────────── */
 toggleBtn.addEventListener('click', () => {
   if (!isRunning) startMetronome();
   else stopMetronome();
 });
 
-/* ───── 5️⃣  Touch‑friendly – resume AudioContext ─────────── */
+/* ───── 6️⃣  Touch‑friendly – resume AudioContext ───── */
 document.body.addEventListener('touchstart', () => {
   if (ctx.state === 'suspended') ctx.resume();
 });
