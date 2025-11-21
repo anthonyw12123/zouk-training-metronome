@@ -21,28 +21,40 @@
 
 <div class="container">
   <h1>Metronome + Speech</h1>
+
+  <!-- BPM controls -->
   <div class="bpm-control">
     <label for="bpm">BPM:</label>
     <input type="range" id="bpm" min="40" max="240" value="120">
     <input type="number" id="bpmNum" min="40" max="240" value="120">
   </div>
+
+  <!-- Dictionary selector -->
+  <div class="bpm-control">
+    <label for="dictSelect">Dictionary:</label>
+    <select id="dictSelect">
+      <option value="colors" selected>Colors</option>
+      <option value="numbers">Numbers</option>
+      <option value="names">Names</option>
+    </select>
+  </div>
+
+  <!-- Beat display & start/stop -->
   <div class="beat" id="beatDisplay">1</div>
   <button id="toggleBtn">Start</button>
 </div>
 
 <script>
-/* ───── 1️⃣  Web Audio – short click oscillator ──────── */
+/* ───── 1️⃣  Audio – short click oscillator ──────── */
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 const ctx = new AudioContext();
-
-let currentOsc = null;          // keep a ref so we can stop it if needed
+let currentOsc = null;
 
 function playClick(isFirstBeat) {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
 
   osc.type = 'square';
-  // higher‑pitched click on beat 1
   osc.frequency.setValueAtTime(isFirstBeat ? 1500 : 1000, ctx.currentTime);
   gain.gain.setValueAtTime(0.3, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
@@ -55,43 +67,50 @@ function playClick(isFirstBeat) {
   currentOsc = osc;
 }
 
-/* ───── 2️⃣  SpeechSynthesis – “say on beat‑3” ──────── */
-const phrases = ["alpha", "bravo", "charlie", "disco", ""];   // 5 options, last means “speak nothing”
-let lastPhrase = null;   // keep track of the previous phrase
+/* ───── 2️⃣  Dictionaries for random phrases ──────── */
+const dictionaries = {
+  colors: ["", "red", "blue", "green", "yellow", "purple"],
+  numbers: ["", "one", "two", "three", "four", "five"],
+  names: ["", "Alice", "Bob", "Charlie", "Diana", "Evan"]
+};
 
+let currentDict = "colors";
+let phrases = dictionaries[currentDict];
+let lastPhrase = null;
+
+/* Random phrase picker – never repeats the same phrase consecutively */
 function pickPhrase() {
-  if (phrases.length === 0) return "";
-
+  if (!phrases.length) return "";
   let attempt = 0;
-  const maxAttempts = 10;   // safety guard – should never hit this
+  const maxAttempts = 10;
   let chosen;
-
   do {
     chosen = phrases[Math.floor(Math.random() * phrases.length)];
     attempt++;
   } while (chosen === lastPhrase && attempt < maxAttempts);
-
   lastPhrase = chosen;
   return chosen;
 }
 
+/* Speak helper */
 function speak(text) {
-  if (!text) return;           // nothing to say
-  window.speechSynthesis.cancel();          // stop any previous utterance
+  if (!text) return;               // empty string → say nothing
+  window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   window.speechSynthesis.speak(utterance);
 }
 
-/* ───── 3️⃣  UI & state ────────────────────────────────── */
+/* ───── 3️⃣  UI & state ──────── */
 let isRunning = false;
 let bpm = 120;
-let beat = 0;            // 0‑3 for each 4‑beat cycle
-let intervalId = null;    // id from setInterval
+let beat = 0;
+let intervalId = null;
 
 const bpmSlider = document.getElementById('bpm');
 const bpmInput  = document.getElementById('bpmNum');
 const beatDisp  = document.getElementById('beatDisplay');
 const toggleBtn = document.getElementById('toggleBtn');
+const dictSelect = document.getElementById('dictSelect');
 
 bpmSlider.addEventListener('input', e => {
   bpm = +e.target.value;
@@ -105,7 +124,14 @@ bpmInput.addEventListener('input', e => {
   bpmSlider.value = val;
 });
 
-/* ───── 4️⃣  Start / Stop logic ───────────────────────── */
+/* Dictionary change handler */
+dictSelect.addEventListener('change', e => {
+  currentDict = e.target.value;
+  phrases = dictionaries[currentDict];
+  lastPhrase = null;               // reset to avoid immediate repeat
+});
+
+/* ───── 4️⃣  Start / Stop logic ──────── */
 function startMetronome() {
   if (ctx.state === 'suspended') ctx.resume();   // iOS/Android
 
@@ -115,17 +141,14 @@ function startMetronome() {
   toggleBtn.textContent = 'Stop';
   toggleBtn.classList.add('stop');
 
-  // first beat: higher‑pitched click (and no speech)
-  playClick(true);
+  playClick(true);   // first beat click (higher pitch)
 
-  // schedule subsequent clicks
   intervalId = setInterval(() => {
     beat = (beat + 1) % 4;
     beatDisp.textContent = (beat + 1).toString();
-    playClick(beat === 0);            // higher pitch only on beat 1
+    playClick(beat === 0);   // higher pitch on beat 1
 
-    // speech on the third beat (beat == 2)
-    if (beat === 2) {
+    if (beat === 2) {        // third beat
       const phrase = pickPhrase();
       speak(phrase);
     }
@@ -143,13 +166,12 @@ function stopMetronome() {
   window.speechSynthesis.cancel();
 }
 
-/* ───── 5️⃣  Button handler ──────────────────── */
 toggleBtn.addEventListener('click', () => {
   if (!isRunning) startMetronome();
   else stopMetronome();
 });
 
-/* ───── 6️⃣  Touch‑friendly – resume AudioContext ───── */
+/* ───── 5️⃣  Touch‑friendly (mobile) ──────── */
 document.body.addEventListener('touchstart', () => {
   if (ctx.state === 'suspended') ctx.resume();
 });
