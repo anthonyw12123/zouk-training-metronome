@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Metronome + Speech SPA</title>
+<title>Zouk Training Metronome</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
   body{font-family:Arial,Helvetica,sans-serif;background:#f4f4f4;margin:0;padding:0;display:flex;justify-content:center;align-items:center;height:100vh;}
@@ -20,7 +20,7 @@
 <body>
 
 <div class="container">
-  <h1>Metronome + Speech</h1>
+  <h1>Zouk Training Metronome</h1>
 
   <!-- BPM controls -->
   <div class="bpm-control">
@@ -31,11 +31,11 @@
 
   <!-- Dictionary selector -->
   <div class="bpm-control">
-    <label for="dictSelect">Dictionary:</label>
+    <label for="dictSelect">Training:</label>
     <select id="dictSelect">
-      <option value="colors" selected>Colors</option>
-      <option value="numbers">Numbers</option>
-      <option value="names">Names</option>
+      <option value="colors" selected>Footwork</option>
+      <option value="numbers">Head Motion</option>
+      <option value="names">Insanity</option>
     </select>
   </div>
 
@@ -69,9 +69,9 @@ function playClick(isFirstBeat) {
 
 /* ───── 2️⃣  Dictionaries for random phrases ──────── */
 const dictionaries = {
-  colors: ["", "red", "blue", "green", "yellow", "purple"],
-  numbers: ["", "one", "two", "three", "four", "five"],
-  names: ["", "Alice", "Bob", "Charlie", "Diana", "Evan"]
+  colors: ["", "basic", "lateral", "vida zina", "vida zina 180", "basic in place"], // footwork cues
+  numbers: ["", "clockwise asynchronous", "clockwise synchronous", "counterclockwise synchronous", "counterclockwise asynchronous", "wiggle"],     // head motion cues
+  names: ["", "basic in place", "side basic", "linear basic", "pivot", "Evan"]   // insanity cues
 };
 
 let currentDict = "colors";
