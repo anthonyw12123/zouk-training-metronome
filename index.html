@@ -37,12 +37,13 @@ const ctx = new AudioContext();
 
 let currentOsc = null;          // keep a ref so we can stop it if needed
 
-function playClick() {
+function playClick(isFirstBeat) {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
 
   osc.type = 'square';
-  osc.frequency.setValueAtTime(1000, ctx.currentTime); // 1 kHz
+  // higher‑pitched click on beat 1
+  osc.frequency.setValueAtTime(isFirstBeat ? 1500 : 1000, ctx.currentTime);
   gain.gain.setValueAtTime(0.3, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
 
@@ -51,30 +52,23 @@ function playClick() {
   osc.start(ctx.currentTime);
   osc.stop(ctx.currentTime + 0.05);
 
-  currentOsc = osc;               // save reference for quick stop
+  currentOsc = osc;
 }
 
-/* ───── 2️⃣  SpeechSynthesis – “say on beat‑1” ──────── */
-const placeholderText = "Ready to start";   // <-- replace with random pick later
+/* ───── 2️⃣  SpeechSynthesis – “say on beat‑3” ──────── */
+const placeholderText = "Ready to move";   // <-- replace with random pick later
 
 function speak(text) {
-  // cancel any previous utterance to avoid overlap
-  window.speechSynthesis.cancel();
-
+  window.speechSynthesis.cancel();          // stop any previous utterance
   const utterance = new SpeechSynthesisUtterance(text);
-  // optional: tweak voice, pitch, rate
-  // utterance.voice = window.speechSynthesis.getVoices()[0];
-  // utterance.pitch = 1;
-  // utterance.rate = 1;
-
   window.speechSynthesis.speak(utterance);
 }
 
 /* ───── 3️⃣  UI & state ────────────────────────────────── */
 let isRunning = false;
 let bpm = 120;
-let beat = 0;
-let intervalId = null;            // id returned by setInterval
+let beat = 0;            // 0‑3 for each 4‑beat cycle
+let intervalId = null;    // id from setInterval
 
 const bpmSlider = document.getElementById('bpm');
 const bpmInput  = document.getElementById('bpmNum');
@@ -95,7 +89,7 @@ bpmInput.addEventListener('input', e => {
 
 /* ───── 4️⃣  Start / Stop logic ───────────────────────── */
 function startMetronome() {
-  if (ctx.state === 'suspended') ctx.resume();  // iOS/Android
+  if (ctx.state === 'suspended') ctx.resume();   // iOS/Android
 
   isRunning = true;
   beat = 0;
@@ -103,18 +97,17 @@ function startMetronome() {
   toggleBtn.textContent = 'Stop';
   toggleBtn.classList.add('stop');
 
-  // first beat – play click and speak
-  playClick();
-  speak(placeholderText);
+  // first beat: higher‑pitched click (and no speech)
+  playClick(true);
 
   // schedule subsequent clicks
   intervalId = setInterval(() => {
-    beat = (beat + 1) % 4;           // 0 → 1 → 2 → 3 → 0 ...
+    beat = (beat + 1) % 4;
     beatDisp.textContent = (beat + 1).toString();
-    playClick();
+    playClick(beat === 0);            // higher pitch only on beat 1
 
-    // when we land on the first beat again (beat === 0) speak
-    if (beat === 0) speak(placeholderText);
+    // speech on the third beat (beat == 2)
+    if (beat === 2) speak(placeholderText);
   }, 60000 / bpm);
 }
 
@@ -125,16 +118,11 @@ function stopMetronome() {
   toggleBtn.textContent = 'Start';
   toggleBtn.classList.remove('stop');
 
-  // stop any playing click
-  if (currentOsc) {
-    currentOsc.stop();
-    currentOsc = null;
-  }
-  // stop any ongoing speech
+  if (currentOsc) { currentOsc.stop(); currentOsc = null; }
   window.speechSynthesis.cancel();
 }
 
-/* ───── 5️⃣  Button handler ──────────────────────── */
+/* ───── 5️⃣  Button handler ──────────────────── */
 toggleBtn.addEventListener('click', () => {
   if (!isRunning) startMetronome();
   else stopMetronome();
