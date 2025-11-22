@@ -258,6 +258,12 @@ toggleBtn.addEventListener('click', () => {
 /* ───── 5️⃣  Touch‑friendly (mobile) ──────── */
 document.body.addEventListener('touchstart', () => {
   if (ctx.state === 'suspended') ctx.resume();
+
+  // Safari may also suspend the SpeechSynthesis engine
+  if (window.speechSynthesis && window.speechSynthesis.pause) {
+    speechSynthesis.resume(); //` is not part of the spec, but calling
+    // `speak()` from within a user gesture is enough to unlock it.
+  }
 });
 </script>
 </body>
