@@ -104,6 +104,10 @@ function speak(text) {
   if (!text) return;               // empty string → say nothing
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = 'en-US';
+  utterance.rate = 1;          // normal speed
+  utterance.pitch = 1;         // normal pitch
+  utterance.voice = window.speechSynthesis.getVoices().find(voice => voice.lang === 'en-US') || null;
   window.speechSynthesis.speak(utterance);
 }
 
