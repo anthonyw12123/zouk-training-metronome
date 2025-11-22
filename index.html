@@ -56,6 +56,31 @@
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 const ctx = new AudioContext();
 let currentOsc = null;
+let availableVoices = [];   // holds all voices once they’re loaded
+let defaultVoice = null;    // will hold the voice we actually use
+
+function loadVoices() {
+  // Safari/iOS needs a small delay to get the voices
+  availableVoices = window.speechSynthesis.getVoices();
+
+  // If we’re still empty, keep trying (this covers Safari’s delayed load)
+  if (availableVoices.length === 0) {
+    setTimeout(loadVoices, 200);
+    return;
+  }
+
+  // Prefer an English (US) voice; fall back to the first voice in the list
+  const preferredLang = 'en-US';
+  defaultVoice = availableVoices.find(v => v.lang.startsWith(preferredLang)) ||
+                 availableVoices[0] || null;
+}
+
+// Initial load – may return an empty array in Safari
+loadVoices();
+
+// React to the async voice‑loaded event
+window.speechSynthesis.onvoiceschanged = loadVoices;
+
 
 function playClick(isFirstBeat) {
   const osc = ctx.createOscillator();
@@ -101,13 +126,26 @@ function pickPhrase() {
 
 /* Speak helper */
 function speak(text) {
+  if (!('speechSynthesis' in window)) {
+  alert('❌ Your browser does not support the Web Speech API (speechSynthesis).');
+  // you may also disable your “Speak” button here
+    return;
+  }
   if (!text) return;               // empty string → say nothing
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'en-US';
   utterance.rate = 1;          // normal speed
   utterance.pitch = 1;         // normal pitch
-  utterance.voice = window.speechSynthesis.getVoices().find(voice => voice.lang === 'en-US') || null;
+  utterance.voice = defaultVoice; //window.speechSynthesis.getVoices().find(voice => voice.lang === 'en-US') || null;
+
+  utterance.onerror = (e) => {
+    console.warn('SpeechSynthesisUtterance error:', e.error);
+  };
+  utterance.onend = () => {
+    console.log('SpeechSynthesisUtterance ended.');
+  };
+
   window.speechSynthesis.speak(utterance);
 }
 
