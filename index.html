@@ -22,14 +22,12 @@
 <div class="container">
   <h1>Zouk Training Metronome</h1>
 
-  <!-- BPM controls -->
   <div class="bpm-control">
     <label for="bpm">BPM:</label>
     <input type="range" id="bpm" min="40" max="80" value="60">
     <input type="number" id="bpmNum" min="40" max="80" value="60">
   </div>
 
-  <!-- Dictionary selector -->
   <div class="bpm-control">
     <label for="dictSelect">Training:</label>
     <select id="dictSelect">
@@ -39,54 +37,69 @@
     </select>
   </div>
 
-  <!-- Speak‑mode slider (new) -->
   <div class="bpm-control">
     <label for="speakMode">Speak Mode:</label>
     <input type="range" id="speakMode" min="1" max="3" step="1" value="1">
     <span id="speakModeLabel">Every 3rd Count</span>
   </div>
 
-  <!-- Beat display & start/stop -->
   <div class="beat" id="beatDisplay">1</div>
   <button id="toggleBtn">Zouk It!</button>
 </div>
 
 <script>
-/* ───── 1️⃣  Audio – short click oscillator ──────── */
+/* ───── GLOBALS & INITIALIZATION ──────── */
 const AudioContext = window.AudioContext || window.webkitAudioContext;
 const ctx = new AudioContext();
+
+let isRunning = false;
+let isStartPending = false;     // True when user clicked but waiting for speech unlock
+let isSpeechInitialized = false; // True when the silent utterance completes
+
+let bpm = 60;
+let beat = 0;
+let intervalId = null;
 let currentOsc = null;
-let availableVoices = [];   // holds all voices once they’re loaded
-let defaultVoice = null;    // will hold the voice we actually use
 
+let speakMode = 1;
+let speakOnThirdToggle = true;
+
+let availableVoices = [];
+let defaultVoice = null;
+
+/* DOM Elements */
+const bpmSlider = document.getElementById('bpm');
+const bpmInput  = document.getElementById('bpmNum');
+const beatDisp  = document.getElementById('beatDisplay');
+const toggleBtn = document.getElementById('toggleBtn');
+const dictSelect = document.getElementById('dictSelect');
+const speakModeSlider = document.getElementById('speakMode');
+const speakModeLabel = document.getElementById('speakModeLabel');
+
+
+/* ───── 1️⃣  VOICE LOADING & SETUP ──────── */
 function loadVoices() {
-  // Safari/iOS needs a small delay to get the voices
   availableVoices = window.speechSynthesis.getVoices();
-
-  // If we’re still empty, keep trying (this covers Safari’s delayed load)
   if (availableVoices.length === 0) {
-    setTimeout(loadVoices, 200);
+    setTimeout(loadVoices, 200); // Retry for browsers (like Safari) with delayed voice loading
     return;
   }
-
-  // Prefer an English (US) voice; fall back to the first voice in the list
+  // Prefer English (US) voice
   const preferredLang = 'en-US';
-  defaultVoice = availableVoices.find(v => v.lang.startsWith(preferredLang)) ||
-                 availableVoices[0] || null;
+  defaultVoice = availableVoices.find(v => v.lang.startsWith(preferredLang)) || availableVoices[0] || null;
 }
 
-// Initial load – may return an empty array in Safari
 loadVoices();
-
-// React to the async voice‑loaded event
 window.speechSynthesis.onvoiceschanged = loadVoices;
 
 
+/* ───── 2️⃣  AUDIO CLICK GENERATOR ──────── */
 function playClick(isFirstBeat) {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
 
   osc.type = 'square';
+  // Use current time for scheduling
   osc.frequency.setValueAtTime(isFirstBeat ? 1500 : 800, ctx.currentTime);
   gain.gain.setValueAtTime(0.3, ctx.currentTime);
   gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.05);
@@ -99,132 +112,103 @@ function playClick(isFirstBeat) {
   currentOsc = osc;
 }
 
-/* ───── 2️⃣  Dictionaries for random phrases ──────── */
+
+/* ───── 3️⃣  PHRASE DICTIONARIES & PICKER ──────── */
 const dictionaries = {
-  colors: ["", "basic", "ladder all", "veeduh jeena", "veeduh jeena 1 80", "basic in place"], // footwork cues
-  numbers: ["", "clockwise asynchronous", "clockwise synchronous", "counterclockwise synchronous", "counterclockwise asynchronous", "wiggle wiggle wiggle"], // head motion cues
-  names: ["", "basic in place", "side basic", "linear basic", "pivot", "bonus", "boomerang", "hawool"] // insanity cues
+  colors: ["", "basic", "ladder all", "veeduh jeena", "veeduh jeena 1 80", "basic in place"],
+  numbers: ["", "clockwise asynchronous", "clockwise synchronous", "counterclockwise synchronous", "counterclockwise asynchronous", "wiggle wiggle wiggle"],
+  names: ["", "basic in place", "side basic", "linear basic", "pivot", "bonus", "boomerang", "hawool"]
 };
 
 let currentDict = "colors";
 let phrases = dictionaries[currentDict];
 let lastPhrase = null;
 
-/* Random phrase picker – never repeats the same phrase consecutively */
 function pickPhrase() {
-  if (!phrases.length) return "";
-  let attempt = 0;
-  const maxAttempts = 10;
+  const currentPhrases = dictionaries[currentDict];
+  if (!currentPhrases.length) return "";
   let chosen;
+  let attempt = 0;
+  // Pick a phrase that is not the same as the last one
   do {
-    chosen = phrases[Math.floor(Math.random() * phrases.length)];
+    chosen = currentPhrases[Math.floor(Math.random() * currentPhrases.length)];
     attempt++;
-  } while (chosen === lastPhrase && attempt < maxAttempts);
+  } while (chosen === lastPhrase && attempt < 10);
   lastPhrase = chosen;
   return chosen;
 }
 
-/* Speak helper */
+
+/* ───── 4️⃣  SPEAK HELPER (Mobile Compatibility Core) ──────── */
 function speak(text) {
-  if (!('speechSynthesis' in window)) {
-  alert('❌ Your browser does not support the Web Speech API (speechSynthesis).');
-  // you may also disable your “Speak” button here
-    return;
-  }
-  if (!text) return;               // empty string → say nothing
+  if (!('speechSynthesis' in window)) return;
+  
+  // This is the silent unlock call upon the user's first click
+  const isUnlockAttempt = text === "" && !isSpeechInitialized;
+
+  if (!isUnlockAttempt && !text) return; // Prevent speaking empty strings (except for the unlock)
+
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = 'en-US';
-  utterance.rate = 1;          // normal speed
-  utterance.pitch = 1;         // normal pitch
-  utterance.voice = defaultVoice; //window.speechSynthesis.getVoices().find(voice => voice.lang === 'en-US') || null;
+  utterance.rate = 1;
+  utterance.pitch = 1;
+  utterance.voice = defaultVoice; 
 
   utterance.onerror = (e) => {
     console.warn('SpeechSynthesisUtterance error:', e.error);
+    // If the unlock attempt fails, flag it as initialized to allow the metronome to start anyway
+    if (isUnlockAttempt) {
+      isSpeechInitialized = true;
+      if (isStartPending) startMetronome();
+    }
   };
+  
+  // CRITICAL: This fires AFTER the speech engine has successfully opened and finished
   utterance.onend = () => {
-    console.log('SpeechSynthesisUtterance ended.');
+    if (isUnlockAttempt) {
+      isSpeechInitialized = true;
+      console.log("Speech Engine UNLOCKED!");
+      // If the user clicked to start while waiting, run the metronome now
+      if (isStartPending) {
+        isStartPending = false;
+        startMetronome(); 
+      }
+    }
   };
 
   window.speechSynthesis.speak(utterance);
 }
 
-/* ───── 3️⃣  UI & state ──────── */
-let isRunning = false;
-let bpm = 60;
-let beat = 0;
-let intervalId = null;
 
-/* Speak‑mode variables */
-let speakMode = 1;                // 1=every 3rd, 2=every other 3rd, 3=random
-let speakOnThirdToggle = true;     // used only in mode 2 to alternate speaking
-
-const bpmSlider = document.getElementById('bpm');
-const bpmInput  = document.getElementById('bpmNum');
-const beatDisp  = document.getElementById('beatDisplay');
-const toggleBtn = document.getElementById('toggleBtn');
-const dictSelect = document.getElementById('dictSelect');
-const speakModeSlider = document.getElementById('speakMode');
-const speakModeLabel = document.getElementById('speakModeLabel');
-
-bpmSlider.addEventListener('input', e => {
-  bpm = +e.target.value;
-  bpmInput.value = bpm;
-});
-bpmInput.addEventListener('input', e => {
-  let val = +e.target.value;
-  if (val < 40) val = 40;
-  if (val > 80) val = 80;
-  bpm = val;
-  bpmSlider.value = val;
-});
-
-/* Dictionary change handler */
-dictSelect.addEventListener('change', e => {
-  currentDict = e.target.value;
-  phrases = dictionaries[currentDict];
-  lastPhrase = null;               // reset to avoid immediate repeat
-});
-
-/* Speak‑mode slider handler */
-function updateSpeakModeLabel() {
-  const texts = {
-    1: "Every 3rd Count",
-    2: "Every Other 3rd Count",
-    3: "Random (25 %)"
-  };
-  speakModeLabel.textContent = texts[speakMode] || "";
-}
-speakModeSlider.addEventListener('input', e => {
-  speakMode = +e.target.value;
-  updateSpeakModeLabel();
-});
-speakModeSlider.addEventListener('change', updateSpeakModeLabel); // ensure initial label
-updateSpeakModeLabel(); // set initial label
-
-/* ───── 4️⃣  Start / Stop logic ──────── */
+/* ───── 5️⃣  METRONOME LOGIC ──────── */
 function startMetronome() {
-  if (ctx.state === 'suspended') ctx.resume();   // iOS/Android
+  if (ctx.state === 'suspended') ctx.resume(); // Unlock Web Audio context
 
   isRunning = true;
+  isStartPending = false; // Clear pending state
   beat = 0;
   beatDisp.textContent = '1';
   toggleBtn.textContent = 'Stop';
   toggleBtn.classList.add('stop');
 
-  playClick(true);   // first beat click (higher pitch)
+  playClick(true); // first beat click (higher pitch)
+
+  // Use the calculated time based on BPM for the interval
+  const intervalTimeMs = 60000 / bpm; 
 
   intervalId = setInterval(() => {
     beat = (beat + 1) % 4;
     beatDisp.textContent = (beat + 1).toString();
-    playClick(beat === 0);   // higher pitch on beat 1
+    playClick(beat === 0); // higher pitch on beat 1
 
-    if (beat === 2) {        // third beat
+    if (beat === 2) { // third beat (where the phrase occurs)
       let shouldSpeak = false;
+
+      // Logic for the Speak Mode setting
       if (speakMode === 1) {
         shouldSpeak = true;
       } else if (speakMode === 2) {
-        // alternate each third beat
         speakOnThirdToggle = !speakOnThirdToggle;
         shouldSpeak = speakOnThirdToggle;
       } else if (speakMode === 3) {
@@ -236,37 +220,76 @@ function startMetronome() {
         speak(phrase);
       }
     }
-  }, 60000 / bpm);
+  }, intervalTimeMs);
 }
 
 function stopMetronome() {
   isRunning = false;
+  isStartPending = false; 
+
   if (intervalId) clearInterval(intervalId);
   intervalId = null;
   toggleBtn.textContent = 'Zouk It!';
   toggleBtn.classList.remove('stop');
 
-  if (currentOsc) { currentOsc.stop(); currentOsc = null; }
   window.speechSynthesis.cancel();
+  if (currentOsc) { currentOsc.stop(); currentOsc = null; }
 }
 
-toggleBtn.addEventListener('click', () => {
-  if (!isRunning) {
-    speak("");
-    startMetronome();
-  }
-  else stopMetronome();
+
+/* ───── 6️⃣  EVENT HANDLERS ──────── */
+// BPM Input Handlers
+bpmSlider.addEventListener('input', (e) => {
+  bpm = +e.target.value;
+  bpmInput.value = bpm;
+});
+bpmInput.addEventListener('input', (e) => {
+  let val = +e.target.value;
+  if (val < 40) val = 40;
+  if (val > 80) val = 80;
+  bpm = val;
+  bpmSlider.value = val;
 });
 
-/* ───── 5️⃣  Touch‑friendly (mobile) ──────── */
-document.body.addEventListener('touchstart', () => {
-    speak("");
-  if (ctx.state === 'suspended') ctx.resume();
+// Dictionary change handler
+dictSelect.addEventListener('change', (e) => {
+  currentDict = e.target.value;
+  phrases = dictionaries[currentDict]; // Update the phrases array
+  lastPhrase = null; // reset to avoid immediate repeat
+});
 
-  // Safari may also suspend the SpeechSynthesis engine
-  if (window.speechSynthesis && window.speechSynthesis.pause) {
-    speechSynthesis.resume(); //` is not part of the spec, but calling
-    // `speak()` from within a user gesture is enough to unlock it.
+// Speak‑mode slider handler
+function updateSpeakModeLabel() {
+  const texts = {
+    1: "Every 3rd Count",
+    2: "Every Other 3rd Count",
+    3: "Random (25 %)"
+  };
+  speakModeLabel.textContent = texts[speakMode] || "";
+}
+speakModeSlider.addEventListener('input', (e) => {
+  speakMode = +e.target.value;
+  updateSpeakModeLabel();
+});
+updateSpeakModeLabel(); // set initial label
+
+// Main Start/Stop Toggle Button
+toggleBtn.addEventListener('click', () => {
+  if (isRunning || isStartPending) {
+    stopMetronome();
+  } else {
+    // START path
+    if (isSpeechInitialized || !('speechSynthesis' in window)) {
+      // 1. Ready to go (Desktop or already unlocked on mobile)
+      startMetronome();
+    } else {
+      // 2. Mobile/iOS: Needs unlock
+      isStartPending = true; // Signal we want to start
+      toggleBtn.textContent = 'Waiting...'; 
+      // Call speak with an empty string to trigger the unlock. 
+      // The 'onend' handler in speak() will call startMetronome() once ready.
+      speak(""); 
+    }
   }
 });
 </script>
