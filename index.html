@@ -260,6 +260,7 @@ toggleBtn.addEventListener('click', () => {
 
 /* ───── 5️⃣  Touch‑friendly (mobile) ──────── */
 document.body.addEventListener('touchstart', () => {
+    speak("");
   if (ctx.state === 'suspended') ctx.resume();
 
   // Safari may also suspend the SpeechSynthesis engine
