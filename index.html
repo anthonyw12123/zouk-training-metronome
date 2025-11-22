@@ -251,7 +251,10 @@ function stopMetronome() {
 }
 
 toggleBtn.addEventListener('click', () => {
-  if (!isRunning) startMetronome();
+  if (!isRunning) {
+    speak("");
+    startMetronome();
+  }
   else stopMetronome();
 });
 
